@@ -4,21 +4,41 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ChatMessageHistory, ConversationBufferMemory
+from langchain_community.chat_models import BedrockChat
 import chainlit as cl
+from langchain_community.embeddings import BedrockEmbeddings
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 import os
+import boto3
 
 # Loading environment variables from .env file
 load_dotenv() 
 
 # Function to initialize conversation chain with GROQ language model
-groq_api_key = os.environ['GROQ_API_KEY']
+# groq_api_key = os.environ['GROQ_API_KEY']
 
 # Initializing GROQ chat with provided API key, model name, and settings
-llm_groq = ChatGroq(
-            groq_api_key=groq_api_key, model_name="llama3-70b-8192",
-                         temperature=0.2)
+# llm_groq = ChatGroq(
+#             groq_api_key=groq_api_key, model_name="llama3-70b-8192",
+#                          temperature=0.2)
+
+boto3_bedrock_runtime = boto3.client(service_name='bedrock-runtime')
+
+model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
+model_kwargs =  {
+    "max_tokens": 2048,
+    "temperature": 0.0,
+    "top_k": 250,
+    "top_p": 1,
+    "stop_sequences": ["\\n\\nHuman"],
+}
+
+llm_groq = BedrockChat(
+    client=boto3_bedrock_runtime,
+    model_id=model_id,
+    model_kwargs=model_kwargs,
+)
 
 
 @cl.on_chat_start
@@ -57,7 +77,11 @@ async def on_chat_start():
         metadatas.extend(file_metadatas)
 
     # Create a Chroma vector store
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    embeddings = BedrockEmbeddings(
+    client=boto3_bedrock_runtime,
+    model_id='amazon.titan-embed-text-v1',
+    region_name="us-east-1"
+)
     docsearch = await cl.make_async(Chroma.from_texts)(
         texts, embeddings, metadatas=metadatas
     )
@@ -125,4 +149,3 @@ async def main(message: cl.Message):
             answer += "\nNo sources found"
     #return results
     await cl.Message(content=answer, elements=text_elements).send()
-  
